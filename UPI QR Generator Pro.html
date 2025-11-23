@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UPI SoundBox & QR Generator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Noto+Sans+Bengali:wght@400;700&family=Noto+Sans+Devanagari:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- QR Code Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans Devanagari', 'Noto Sans Bengali', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* --- PRINT STYLES (A4) --- */
+        @media print {
+            @page {
+                size: A4;
+                margin: 0;
+            }
+            body {
+                background-color: white;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-area {
+                display: flex !important;
+                width: 210mm;
+                height: 297mm;
+                position: absolute;
+                top: 0;
+                left: 0;
+                z-index: 9999;
+                background: white;
+            }
+            img {
+                -webkit-print-color-adjust: exact;
+            }
+        }
+
+        .print-area {
+            display: none; /* Hidden on screen */
+        }
+
+        /* --- ANIMATIONS --- */
+        .pattern-bg {
+            background-image:  radial-gradient(#4f46e5 0.75px, transparent 0.75px), radial-gradient(#4f46e5 0.75px, #ffffff 0.75px);
+            background-size: 30px 30px;
+            background-position: 0 0, 15px 15px;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .animate-pop {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        
+        /* Loading Spinner for Audio */
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #16a34a;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col relative overflow-x-hidden">
+
+    <!-- Navbar -->
+    <nav class="bg-indigo-700 p-4 shadow-lg no-print z-20">
+        <div class="container mx-auto flex items-center justify-between text-white">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-qrcode text-2xl"></i>
+                <h1 class="text-xl font-bold">UPI SoundBox Generator</h1>
+            </div>
+            <div class="text-xs bg-indigo-800 px-3 py-1 rounded-full border border-indigo-600 flex items-center gap-2">
+                <i class="fa-solid fa-volume-high"></i> 
+                <span>Multilingual Voice</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="flex-grow container mx-auto p-4 md:p-8 flex flex-col md:flex-row gap-8 no-print z-10">
+        
+        <!-- Input Form -->
+        <div class="w-full md:w-1/3 bg-white p-6 rounded-2xl shadow-xl h-fit border-t-4 border-indigo-600">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Setup Merchant</h2>
+            
+            <div class="space-y-5">
+                <!-- Name -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Display Name</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-3 text-gray-400"><i class="fa-solid fa-store"></i></span>
+                        <input type="text" id="payeeName" placeholder="e.g. Rahul General Store" 
+                               class="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+                               oninput="updatePreview()">
+                    </div>
+                </div>
+
+                <!-- UPI ID -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">UPI ID (VPA)</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-3 text-gray-400"><i class="fa-solid fa-at"></i></span>
+                        <input type="text" id="upiId" placeholder="e.g. store@okbizaxis" 
+                               class="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+                               oninput="updatePreview()">
+                    </div>
+                    <div id="detectionResult" class="mt-2 min-h-[24px]"></div>
+                </div>
+
+                <!-- Amount -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Amount (₹)</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-3 text-gray-400"><i class="fa-solid fa-indian-rupee-sign"></i></span>
+                        <input type="number" id="amount" placeholder="Enter amount for audio test" 
+                               class="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+                               oninput="updatePreview()">
+                    </div>
+                </div>
+
+                <!-- Language Selector -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Voice Language</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-3 text-gray-400"><i class="fa-solid fa-language"></i></span>
+                        <select id="voiceLang" class="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors bg-white appearance-none cursor-pointer hover:bg-gray-50">
+                            <option value="en">English (Female)</option>
+                            <option value="hi">Hindi (हिन्दी)</option>
+                            <option value="bn">Bengali (বাংলা)</option>
+                        </select>
+                        <span class="absolute right-3 top-3 text-gray-400 pointer-events-none"><i class="fa-solid fa-chevron-down"></i></span>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Selects language for payment announcement.</p>
+                </div>
+
+                <!-- Buttons -->
+                <div class="pt-2 grid grid-cols-1 gap-3">
+                    <button id="payBtn" onclick="simulatePayment()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transform active:scale-95 transition-all flex items-center justify-center gap-2">
+                        <span id="payIcon"><i class="fa-solid fa-volume-high animate-pulse"></i></span>
+                        <span id="payText">Test Payment Alert</span>
+                    </button>
+                    
+                    <button onclick="printCard()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transform active:scale-95 transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-print"></i> Print A4 Poster
+                    </button>
+                    
+                    <button onclick="downloadQR()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-download"></i> Save QR
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview Section -->
+        <div class="w-full md:w-2/3 flex flex-col items-center justify-start">
+            <h2 class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Live Preview</h2>
+            
+            <!-- Digital Card Preview -->
+            <div class="bg-white rounded-2xl shadow-2xl overflow-hidden w-full max-w-sm border border-gray-200 relative">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-indigo-600 to-blue-600 p-6 text-center text-white">
+                    <h3 class="text-2xl font-bold">Scan & Pay</h3>
+                    <div id="previewDetection" class="inline-block mt-2 px-3 py-1 bg-white/20 rounded-full text-xs font-medium backdrop-blur-sm opacity-0">
+                        <!-- Detected App -->
+                    </div>
+                </div>
+
+                <!-- QR Area -->
+                <div class="p-8 bg-white flex flex-col items-center relative">
+                    <div class="border-4 border-indigo-100 p-2 rounded-xl mb-4">
+                        <canvas id="qr-preview" class="w-56 h-56"></canvas>
+                    </div>
+
+                    <h3 id="previewName" class="text-xl font-bold text-gray-800 text-center leading-tight mb-1">Merchant Name</h3>
+                    <p id="previewId" class="text-gray-500 font-mono text-sm bg-gray-100 px-2 py-1 rounded">upi@id</p>
+
+                    <!-- Payment Icons -->
+                    <div class="flex gap-4 mt-6 opacity-50 grayscale hover:grayscale-0 transition-all">
+                        <i class="fa-brands fa-google-pay text-2xl"></i>
+                        <i class="fa-brands fa-amazon-pay text-2xl"></i>
+                        <i class="fa-solid fa-wallet text-2xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 
+      PAYMENT RECEIVED OVERLAY (Hidden by default)
+    -->
+    <div id="paymentOverlay" class="fixed inset-0 bg-green-600 z-50 hidden flex-col items-center justify-center text-white no-print">
+        <div class="animate-pop flex flex-col items-center text-center p-8">
+            <div class="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-6 shadow-2xl">
+                <i class="fa-solid fa-check text-6xl text-green-600"></i>
+            </div>
+            <h1 class="text-4xl font-black mb-2">Payment Received!</h1>
+            <h2 class="text-2xl font-medium opacity-90 mb-8">
+                Received ₹<span id="overlayAmount">0</span>
+            </h2>
+            <p class="text-green-100 text-lg">Thank you! Visit again.</p>
+            
+            <button onclick="closeOverlay()" class="mt-12 border border-white/30 hover:bg-white/10 px-6 py-2 rounded-full text-sm transition-colors">
+                Close Alert
+            </button>
+        </div>
+    </div>
+
+    <!-- 
+      A4 PRINT LAYOUT
+      Designed strictly for A4 dimensions (210mm x 297mm)
+    -->
+    <div class="print-area flex-col relative overflow-hidden text-center bg-white">
+        
+        <!-- Header -->
+        <div class="bg-indigo-700 text-white h-[20%] w-full flex flex-col items-center justify-center relative print:bg-indigo-700">
+             <!-- Pattern Overlay -->
+            <div class="absolute inset-0 pattern-bg opacity-10"></div>
+            <h1 class="text-7xl font-black uppercase tracking-widest relative z-10">Scan & Pay</h1>
+            <p class="text-2xl mt-2 font-light relative z-10">Accepted Here</p>
+        </div>
+
+        <!-- Body -->
+        <div class="flex-grow flex flex-col items-center justify-start pt-16 w-full">
+            
+            <!-- Large QR Code for Print -->
+            <div class="relative p-6 border-8 border-indigo-600 rounded-3xl bg-white shadow-none">
+                <img id="print-qr-img" class="w-[120mm] h-[120mm] object-contain block" src="" alt="QR Code">
+                
+                <!-- Center Logo Overlay -->
+                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white p-3 rounded-full border-2 border-indigo-100">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/e/e1/UPI-Logo-vector.svg" class="w-16 h-16">
+                </div>
+            </div>
+
+            <!-- Merchant Details -->
+            <div class="mt-10 w-[80%]">
+                <h2 id="printName" class="text-5xl font-bold text-gray-800 mb-4 break-words leading-tight">Merchant Name</h2>
+                <div class="bg-gray-100 border-2 border-gray-300 inline-block px-8 py-4 rounded-2xl">
+                    <p id="printId" class="text-3xl font-mono text-gray-700 font-bold">upi@id</p>
+                </div>
+            </div>
+
+            <!-- Dynamic Provider Text -->
+            <div id="printProviderText" class="mt-8 text-2xl font-bold text-indigo-600 uppercase tracking-widest hidden">
+                <!-- Injected via JS -->
+            </div>
+
+            <!-- Apps Strip -->
+            <div class="mt-auto mb-16 flex gap-12 grayscale opacity-70 scale-125">
+                 <img src="https://upload.wikimedia.org/wikipedia/commons/f/f2/Google_Pay_Logo.svg" class="h-8">
+                 <img src="https://upload.wikimedia.org/wikipedia/commons/7/71/PhonePe_Logo.svg" class="h-8">
+                 <img src="https://upload.wikimedia.org/wikipedia/commons/2/24/Paytm_Logo_%28standalone%29.svg" class="h-8">
+                 <img src="https://upload.wikimedia.org/wikipedia/commons/e/e1/UPI-Logo-vector.svg" class="h-8">
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="h-[10%] bg-gray-900 w-full flex items-center justify-between px-12 text-white print:bg-gray-900">
+            <div class="flex items-center gap-4">
+                <i class="fa-solid fa-lock text-3xl text-green-500"></i>
+                <div class="text-left">
+                    <p class="font-bold text-xl">100% Secure</p>
+                    <p class="text-sm text-gray-400">Direct Bank Transfer</p>
+                </div>
+            </div>
+            <div class="text-right opacity-60 text-sm">
+                Generated via UPI SoundBox Tool
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Key for High-Quality Emotional Voice (Environment Provided)
+        const apiKey = ""; 
+
+        const upiHandles = {
+            'okaxis': { name: 'Google Pay', color: 'text-blue-600' },
+            'okhdfcbank': { name: 'Google Pay', color: 'text-blue-600' },
+            'okicici': { name: 'Google Pay', color: 'text-blue-600' },
+            'oksbi': { name: 'Google Pay', color: 'text-blue-600' },
+            'okbizaxis': { name: 'Google Pay Business', color: 'text-blue-700' }, // Added
+            'ybl': { name: 'PhonePe', color: 'text-purple-600' },
+            'ibl': { name: 'PhonePe', color: 'text-purple-600' },
+            'axl': { name: 'PhonePe', color: 'text-purple-600' },
+            'paytm': { name: 'Paytm', color: 'text-blue-500' },
+            'upi': { name: 'BHIM UPI', color: 'text-orange-500' },
+            'apl': { name: 'Amazon Pay', color: 'text-yellow-600' }, // Added
+            'naviaxis': { name: 'Navi', color: 'text-pink-600' } // Added
+        };
+
+        const translations = {
+            'en': {
+                text: (amt) => `Received Rupees ${amt} on the Merchant. Thank you! Visit again.`,
+                prompt: (amt) => `Say cheerfully in English: Payment Received! Received Rupees ${amt} on the Merchant. Thank you! Visit again.`,
+                codes: ['en-IN', 'en-US', 'en-GB']
+            },
+            'hi': {
+                text: (amt) => `मर्चेंट पर ${amt} रुपये प्राप्त हुए। धन्यवाद! फिर पधारें।`,
+                prompt: (amt) => `Say cheerfully in Hindi: भुगतान प्राप्त हुआ! मर्चेंट पर ${amt} रुपये प्राप्त हुए। धन्यवाद! फिर पधारें।`,
+                codes: ['hi-IN']
+            },
+            'bn': {
+                text: (amt) => `মার্চেন্টে ${amt} টাকা পাওয়া গেছে। ধন্যবাদ! আবার আসবেন।`,
+                prompt: (amt) => `Say cheerfully in Bengali: পেমেন্ট রিসিভড! মার্চেন্টে ${amt} টাকা পাওয়া গেছে। ধন্যবাদ! আবার আসবেন।`,
+                codes: ['bn-IN', 'bn-BD']
+            }
+        };
+
+        let qr;
+
+        function init() {
+            qr = new QRious({
+                element: document.getElementById('qr-preview'),
+                size: 300,
+                value: 'upi://pay'
+            });
+            // Pre-load voices for browser fallback
+            window.speechSynthesis.getVoices();
+        }
+
+        async function simulatePayment() {
+            const amount = document.getElementById('amount').value || "100";
+            const langCode = document.getElementById('voiceLang').value;
+            const overlay = document.getElementById('paymentOverlay');
+            const btnText = document.getElementById('payText');
+            const btnIcon = document.getElementById('payIcon');
+            const langData = translations[langCode];
+            
+            // 1. Show Visual Alert
+            document.getElementById('overlayAmount').innerText = amount;
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+
+            const textToSpeak = langData.text(amount);
+
+            // --- STRATEGY A: HIGH QUALITY AI VOICE (If API Key exists) ---
+            if(apiKey && apiKey.length > 5) {
+                try {
+                    btnText.innerText = "Generating Audio...";
+                    btnIcon.innerHTML = '<div class="loader"></div>';
+
+                    // For English, use Aoede. For others, let the model decide tone but prompt language explicitly.
+                    let voiceName = "Aoede"; 
+
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: langData.prompt(amount) }] }],
+                            generationConfig: {
+                                responseModalities: ["AUDIO"],
+                                speechConfig: { 
+                                    voiceConfig: { 
+                                        prebuiltVoiceConfig: { voiceName: voiceName }
+                                    } 
+                                }
+                            }
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.candidates && result.candidates[0].content.parts[0].inlineData) {
+                        const base64Audio = result.candidates[0].content.parts[0].inlineData.data;
+                        const pcmData = base64ToArrayBuffer(base64Audio);
+                        const wavData = pcmToWav(pcmData, 24000); 
+                        const blob = new Blob([wavData], { type: 'audio/wav' });
+                        const audio = new Audio(URL.createObjectURL(blob));
+                        audio.play();
+                        
+                        resetBtn();
+                        return; // Exit if successful
+                    }
+                } catch (e) {
+                    console.error("AI Voice failed, falling back to browser.", e);
+                }
+            }
+
+            // --- STRATEGY B: BROWSER FALLBACK (Reliable Offline) ---
+            resetBtn();
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(textToSpeak);
+                
+                // Find Appropriate Voice
+                const voices = window.speechSynthesis.getVoices();
+                let selectedVoice = null;
+                
+                // Try finding specific regional voices first
+                for(let code of langData.codes) {
+                    selectedVoice = voices.find(v => v.lang === code && (v.name.includes('Female') || v.name.includes('Google') || v.name.includes('Lekha')));
+                    if(selectedVoice) break;
+                }
+
+                // Generic Fallback if specific region not found
+                if(!selectedVoice) {
+                     // Try finding any voice with matching language code prefix
+                     selectedVoice = voices.find(v => v.lang.startsWith(langCode));
+                }
+
+                if(selectedVoice) {
+                    utterance.voice = selectedVoice;
+                }
+
+                // Simulate "Cheerfulness" via Pitch and Rate
+                utterance.pitch = 1.1; 
+                utterance.rate = 1.0;
+
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function resetBtn() {
+            document.getElementById('payText').innerText = "Test Payment Alert";
+            document.getElementById('payIcon').innerHTML = '<i class="fa-solid fa-volume-high animate-pulse"></i>';
+        }
+
+        // --- Audio Helpers for AI Voice ---
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        function pcmToWav(pcmData, sampleRate) {
+            const header = new ArrayBuffer(44);
+            const view = new DataView(header);
+            const totalLen = pcmData.length + 44;
+            
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + pcmData.length, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true); 
+            view.setUint16(20, 1, true); 
+            view.setUint16(22, 1, true); 
+            view.setUint32(24, sampleRate, true); 
+            view.setUint32(28, sampleRate * 2, true); 
+            view.setUint16(32, 2, true); 
+            view.setUint16(34, 16, true); 
+            writeString(view, 36, 'data');
+            view.setUint32(40, pcmData.length, true);
+            
+            const wav = new Uint8Array(totalLen);
+            wav.set(new Uint8Array(header), 0);
+            wav.set(pcmData, 44);
+            return wav.buffer;
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        // --- Existing Logic ---
+
+        function updatePreview() {
+            const name = document.getElementById('payeeName').value.trim();
+            const upiId = document.getElementById('upiId').value.trim().toLowerCase();
+            
+            document.getElementById('previewName').innerText = name || 'Merchant Name';
+            document.getElementById('previewId').innerText = upiId || 'upi@id';
+            document.getElementById('printName').innerText = name || 'Merchant Name';
+            document.getElementById('printId').innerText = upiId || 'upi@id';
+
+            detectProvider(upiId);
+
+            let upiString = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(name)}`;
+            const amount = document.getElementById('amount').value.trim();
+            if(amount) upiString += `&am=${amount}&cu=INR`;
+
+            if (upiId && upiId.includes('@')) {
+                qr.set({ value: upiString, size: 600 });
+            }
+        }
+
+        function detectProvider(upiId) {
+            const detectionDiv = document.getElementById('detectionResult');
+            const previewBadge = document.getElementById('previewDetection');
+            const printText = document.getElementById('printProviderText');
+            
+            if (!upiId.includes('@')) {
+                detectionDiv.innerHTML = '';
+                previewBadge.style.opacity = '0';
+                printText.classList.add('hidden');
+                return;
+            }
+
+            const handle = upiId.split('@')[1];
+            const result = upiHandles[handle];
+
+            if (result) {
+                detectionDiv.innerHTML = `<span class="text-sm font-bold ${result.color}"><i class="fa-solid fa-check-circle"></i> ${result.name} Detected</span>`;
+                previewBadge.innerHTML = `<i class="fa-solid fa-link"></i> Linked to ${result.name}`;
+                previewBadge.style.opacity = '1';
+                printText.innerText = `LINKED WITH ${result.name}`;
+                printText.className = `mt-8 text-2xl font-bold uppercase tracking-widest ${result.color} block`;
+                printText.classList.remove('hidden');
+            } else {
+                detectionDiv.innerHTML = `<span class="text-xs text-gray-400">Generic UPI Handle</span>`;
+                previewBadge.style.opacity = '0';
+                printText.classList.add('hidden');
+            }
+        }
+
+        function closeOverlay() {
+            document.getElementById('paymentOverlay').classList.add('hidden');
+            document.getElementById('paymentOverlay').classList.remove('flex');
+            window.speechSynthesis.cancel();
+        }
+
+        function printCard() {
+            const canvas = document.getElementById('qr-preview');
+            const printImg = document.getElementById('print-qr-img');
+            
+            // Set source
+            printImg.src = canvas.toDataURL("image/png");
+            
+            // Wait for image to render before printing
+            setTimeout(() => {
+                window.print();
+            }, 500);
+        }
+
+        function downloadQR() {
+            const canvas = document.getElementById('qr-preview');
+            const link = document.createElement('a');
+            link.download = 'upi-soundbox-qr.png';
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
